@@ -149,41 +149,43 @@ show_largest_files() {
 # Función 4: Memoria y Swap
 show_memory() {
     echo -e "\n${GREEN}========== MEMORIA Y SWAP ==========${NC}\n"
-    
-    # Obtener información de memoria desde /proc/meminfo
-    total_mem=$(grep MemTotal /proc/meminfo | awk '{print $2 * 1024}')
-    free_mem=$(grep MemAvailable /proc/meminfo | awk '{print $2 * 1024}')
-    used_mem=$((total_mem - free_mem))
-    mem_percent=$(echo "scale=2; ($used_mem * 100) / $total_mem" | bc)
-    
-    # Convertir a GB
-    total_mem_gb=$(echo "scale=2; $total_mem / 1073741824" | bc)
-    free_mem_gb=$(echo "scale=2; $free_mem / 1073741824" | bc)
-    used_mem_gb=$(echo "scale=2; $used_mem / 1073741824" | bc)
-    
+
+    export LC_NUMERIC=C  # Evita comas decimales
+
+    # Leer datos de /proc/meminfo (en KB)
+    total_mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+    avail_mem_kb=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+    used_mem_kb=$(awk -v t="$total_mem_kb" -v a="$avail_mem_kb" 'BEGIN {print t - a}')
+
+    # Calcular porcentaje y convertir a GB
+    mem_percent=$(awk -v u="$used_mem_kb" -v t="$total_mem_kb" 'BEGIN {printf "%.2f", (u*100)/t}')
+    total_mem_gb=$(awk -v t="$total_mem_kb" 'BEGIN {printf "%.2f", t/1048576}')
+    used_mem_gb=$(awk -v u="$used_mem_kb" 'BEGIN {printf "%.2f", u/1048576}')
+    free_mem_gb=$(awk -v a="$avail_mem_kb" 'BEGIN {printf "%.2f", a/1048576}')
+
     echo -e "${YELLOW}MEMORIA RAM:${NC}"
-    echo "  Total: $total_mem bytes ($total_mem_gb GB)"
-    echo "  Libre: $free_mem bytes ($free_mem_gb GB)"
-    echo "  En uso: $used_mem bytes ($used_mem_gb GB - $mem_percent%)"
+    echo "  Total: ${total_mem_gb} GB"
+    echo "  Libre: ${free_mem_gb} GB"
+    echo "  En uso: ${used_mem_gb} GB (${mem_percent}%)"
     echo ""
-    
-    # Obtener información de Swap
-    total_swap=$(grep SwapTotal /proc/meminfo | awk '{print $2 * 1024}')
-    free_swap=$(grep SwapFree /proc/meminfo | awk '{print $2 * 1024}')
-    used_swap=$((total_swap - free_swap))
-    
-    if [ "$total_swap" -gt 0 ]; then
-        swap_percent=$(echo "scale=2; ($used_swap * 100) / $total_swap" | bc)
-        total_swap_gb=$(echo "scale=2; $total_swap / 1073741824" | bc)
-        used_swap_gb=$(echo "scale=2; $used_swap / 1073741824" | bc)
-        
+
+    # Leer datos de swap (en KB)
+    total_swap_kb=$(awk '/SwapTotal/ {print $2}' /proc/meminfo)
+    free_swap_kb=$(awk '/SwapFree/ {print $2}' /proc/meminfo)
+    used_swap_kb=$(awk -v t="$total_swap_kb" -v f="$free_swap_kb" 'BEGIN {print t - f}')
+
+    if [ "$total_swap_kb" -gt 0 ]; then
+        swap_percent=$(awk -v u="$used_swap_kb" -v t="$total_swap_kb" 'BEGIN {printf "%.2f", (u*100)/t}')
+        total_swap_gb=$(awk -v t="$total_swap_kb" 'BEGIN {printf "%.2f", t/1048576}')
+        used_swap_gb=$(awk -v u="$used_swap_kb" 'BEGIN {printf "%.2f", u/1048576}')
+
         echo -e "${YELLOW}SWAP:${NC}"
-        echo "  Total: $total_swap bytes ($total_swap_gb GB)"
-        echo "  En uso: $used_swap bytes ($used_swap_gb GB - $swap_percent%)"
+        echo "  Total: ${total_swap_gb} GB"
+        echo "  En uso: ${used_swap_gb} GB (${swap_percent}%)"
     else
         echo -e "${YELLOW}No se detectó espacio de Swap configurado.${NC}"
     fi
-    
+
     echo -e "\nPresione Enter para continuar..."
     read
 }
