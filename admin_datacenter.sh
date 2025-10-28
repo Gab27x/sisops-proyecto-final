@@ -203,72 +203,61 @@ do_backup() {
         return
     fi
     
-    # Mostrar dispositivos USB disponibles
-    echo -e "\n${YELLOW}Dispositivos removibles disponibles:${NC}"
-    lsblk -o NAME,SIZE,TYPE,MOUNTPOINT | grep -E "sd[b-z]|usb" | grep -v "├─\|└─" || {
-        echo "No se detectaron dispositivos USB montados."
-        echo ""
-    }
+    # Mostrar dispositivos USB disponibles (solo nombre, tamaño y tipo)
+    echo -e "\n${YELLOW}Dispositivos removibles detectados:${NC}"
+    lsblk -o NAME,TRAN,SIZE,TYPE | awk 'NR>1 && $2=="usb" {printf "  - /dev/%s (%s, %s)\n", $1, $2, $3}'
     
-    # Mostrar puntos de montaje
     echo -e "\n${YELLOW}Puntos de montaje disponibles:${NC}"
     mount | grep -E "/media|/mnt" | awk '{print "  - " $3}'
     echo ""
     
     read -p "Ingrese la ruta de montaje del USB (ej: /media/usb): " usb_path
     
-    if [ ! -d "$usb_path" ]; then
-        echo -e "${RED}La ruta especificada no existe o no está montada.${NC}"
-        echo -e "\nPresione Enter para continuar..."
-        read
-        return
-    fi
+    mkdir -p "$usb_path"
     
     # Crear directorio de backup con timestamp
     backup_dir="$usb_path/Backup_$(date +%Y%m%d_%H%M%S)"
     
     echo -e "\n${YELLOW}Creando backup en $backup_dir...${NC}"
-    
-    # Crear directorio de destino
     mkdir -p "$backup_dir"
     
-    # Copiar archivos
-    cp -r "$source_dir"/* "$backup_dir/" 2>/dev/null
+    # Copiar archivos con rsync (silencioso, mostrando solo progreso general)
+    echo -e "\n${CYAN}Copiando archivos...${NC}"
+    rsync -ah --no-perms --no-owner --no-group --quiet --info=progress2 "$source_dir"/ "$backup_dir"/ 2>/dev/null
     
     if [ $? -eq 0 ]; then
-        echo -e "${GREEN}Archivos copiados exitosamente.${NC}"
+        echo -e "\n${GREEN}Archivos copiados exitosamente.${NC}"
     else
-        echo -e "${RED}Hubo algunos errores al copiar archivos.${NC}"
+        echo -e "\n${RED}Hubo algunos errores al copiar archivos.${NC}"
     fi
     
     # Crear catálogo
     catalog_file="$backup_dir/catalogo.txt"
+    {
+        echo "CATÁLOGO DE BACKUP"
+        echo "Fecha de backup: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "Directorio origen: $source_dir"
+        echo "================================================================================"
+        echo ""
+        find "$source_dir" -type f | while read -r file; do
+            relative_path="${file#$source_dir}"
+            mod_date=$(stat -c "%y" "$file" 2>/dev/null || stat -f "%Sm" "$file" 2>/dev/null)
+            file_size=$(stat -c "%s" "$file" 2>/dev/null || stat -f "%z" "$file" 2>/dev/null)
+            echo "Archivo: $relative_path"
+            echo "  Última modificación: $mod_date"
+            echo "  Tamaño: $file_size bytes"
+            echo ""
+        done
+    } > "$catalog_file"
     
-    echo "CATÁLOGO DE BACKUP" > "$catalog_file"
-    echo "Fecha de backup: $(date '+%Y-%m-%d %H:%M:%S')" >> "$catalog_file"
-    echo "Directorio origen: $source_dir" >> "$catalog_file"
-    echo "================================================================================" >> "$catalog_file"
-    echo "" >> "$catalog_file"
-    
-    # Generar lista de archivos con fechas de modificación
-    find "$source_dir" -type f | while read -r file; do
-        relative_path="${file#$source_dir}"
-        mod_date=$(stat -c "%y" "$file" 2>/dev/null || stat -f "%Sm" "$file" 2>/dev/null)
-        file_size=$(stat -c "%s" "$file" 2>/dev/null || stat -f "%z" "$file" 2>/dev/null)
-        
-        echo "Archivo: $relative_path" >> "$catalog_file"
-        echo "  Última modificación: $mod_date" >> "$catalog_file"
-        echo "  Tamaño: $file_size bytes" >> "$catalog_file"
-        echo "" >> "$catalog_file"
-    done
-    
-    echo -e "\n${GREEN}¡Backup completado exitosamente!${NC}"
+    echo -e "\n${GREEN}Backup completado exitosamente.${NC}"
     echo "Ubicación: $backup_dir"
     echo "Catálogo generado: $catalog_file"
     
     echo -e "\nPresione Enter para continuar..."
     read
 }
+
 
 # ============================================
 # PROGRAMA PRINCIPAL
