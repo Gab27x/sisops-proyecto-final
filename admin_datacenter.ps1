@@ -183,6 +183,7 @@ function Get-MemoryInfo {
     Read-Host
 }
 
+
 function Start-Backup {
     Write-Host "`n========== BACKUP A USB ==========" -ForegroundColor Green
     
@@ -197,12 +198,14 @@ function Start-Backup {
     
     # Mostrar unidades USB disponibles
     Write-Host "`nUnidades removibles disponibles:" -ForegroundColor Yellow
-    $removableDrives = Get-PSDrive -PSProvider FileSystem | Where-Object { 
-        $drive = Get-Volume -DriveLetter $_.Name -ErrorAction SilentlyContinue
-        $drive.DriveType -eq 'Removable'
+    $removableDrives = Get-PSDrive -PSProvider FileSystem | ForEach-Object {
+        $volume = Get-Volume -DriveLetter $_.Name -ErrorAction SilentlyContinue
+        if ($volume -and $volume.DriveType -eq 'Removable') {
+            $_
+        }
     }
     
-    if ($removableDrives.Count -eq 0) {
+    if (-not $removableDrives -or $removableDrives.Count -eq 0) {
         Write-Host "No se detectaron unidades USB." -ForegroundColor Red
         Write-Host "`nPresione Enter para continuar..."
         Read-Host
@@ -221,43 +224,46 @@ function Start-Backup {
         Write-Host "`nCreando backup en $destDir..." -ForegroundColor Yellow
         
         # Crear directorio de destino
-        New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+        New-Item -ItemType Directory -Path $destDir -Force -ErrorAction Stop | Out-Null
         
-        # Copiar archivos
-        Copy-Item -Path "$sourceDir\*" -Destination $destDir -Recurse -Force
+        # Copiar archivos (lanza excepción si algo falla)
+        Copy-Item -Path "$sourceDir\*" -Destination $destDir -Recurse -Force -ErrorAction Stop
         
-        # Crear catalogo
+        # Crear catálogo
         $catalogPath = Join-Path $destDir "catalogo.txt"
-        $files = Get-ChildItem -Path $sourceDir -Recurse -File
+        $files = Get-ChildItem -Path $sourceDir -Recurse -File -ErrorAction Stop
         
-        $catalog = @()
-        $catalog += "CATALOGO DE BACKUP"
-        $catalog += "Fecha de backup: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-        $catalog += "Directorio origen: $sourceDir"
-        $catalog += "=" * 80
-        $catalog += ""
+        $catalog = @(
+            "CATALOGO DE BACKUP",
+            "Fecha de backup: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')",
+            "Directorio origen: $sourceDir",
+            ("=" * 80),
+            ""
+        )
         
         foreach ($file in $files) {
             $relativePath = $file.FullName.Substring($sourceDir.Length)
             $catalog += "Archivo: $relativePath"
-            $catalog += "  Ultima modificacion: $($file.LastWriteTime)"
-            $catalog += "  Tamano: $($file.Length) bytes"
+            $catalog += "  Última modificación: $($file.LastWriteTime)"
+            $catalog += "  Tamaño: $($file.Length) bytes"
             $catalog += ""
         }
         
-        $catalog | Out-File -FilePath $catalogPath -Encoding UTF8
+        $catalog | Out-File -FilePath $catalogPath -Encoding UTF8 -ErrorAction Stop
         
         Write-Host "`n¡Backup completado exitosamente!" -ForegroundColor Green
-        Write-Host "Ubicacion: $destDir"
-        Write-Host "Catalogo generado: $catalogPath"
+        Write-Host "Ubicación: $destDir"
+        Write-Host "Catálogo generado: $catalogPath"
         
     } catch {
-        Write-Host "Error al realizar el backup: $_" -ForegroundColor Red
+        Write-Host "`nError al realizar el backup:" -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
     }
     
-    Write-Host "`nPresione cualquier tecla para continuar..."
-    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    Write-Host "`nPresione Enter para continuar..."
+    Read-Host | Out-Null
 }
+
 
 # ============================================
 # PROGRAMA PRINCIPAL
